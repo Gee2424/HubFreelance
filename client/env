@@ -1,0 +1,4 @@
+
+VITE_SUPABASE_URL=https://dzpaupkksrrvbuxtraal.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6cGF1cGtrc3JydmJ1eHRyYWFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI3MzIwNzQsImV4cCI6MjA1ODMwODA3NH0.PnqZ_4sLveIngGoH7ar4e0izBUTyqIrucJYchuRO4d8
+VITE_DATABASE_URL=postgresql://postgres.dzpaupkksrrvbuxtraal:9.jz7iP*MzisNrA@aws-0-eu-central-1.pooler.supabase.com:6543/postgres
