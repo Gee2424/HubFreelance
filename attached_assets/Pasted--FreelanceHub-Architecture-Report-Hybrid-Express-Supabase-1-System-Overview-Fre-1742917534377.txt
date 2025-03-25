@@ -1,0 +1,234 @@
+# **FreelanceHub Architecture Report (Hybrid Express + Supabase)**
+
+## **1. System Overview**
+FreelanceHub is a **full-stack freelancing marketplace** with a hybrid architecture combining:
+- **Express.js** as the API gateway and business logic layer
+- **Supabase** for authentication, realtime features, and PostgreSQL database
+- **Refine.dev** for the admin-facing frontend
+- **Next.js PWA** for the client/freelancer-facing application
+
+The system supports **7 distinct user roles** with shared and exclusive functionality.
+
+---
+
+## **2. Core User Roles & Responsibilities**
+
+### **A. Shared Components**
+All users access:
+- **Profile management** (bio, skills, portfolio)
+- **Messaging system** (real-time via Supabase)
+- **Notifications center**
+- **Wallet dashboard** (balance, transactions)
+
+### **B. Role-Specific Modules**
+| Role | Key Responsibilities | Unique Features |
+|------|----------------------|----------------|
+| **Admin** | System oversight | User/role management, Analytics dashboard, System config |
+| **Client** | Job creation | Post jobs, Award contracts, Release payments |
+| **Freelancer** | Service delivery | Bid on jobs, Submit work, Request withdrawals |
+| **Quality Assurance** | Content review | Approve/reject job posts, Flag inappropriate content |
+| **Support** | User assistance | Ticket system, Live chat, Account recovery |
+| **Dispute Resolution** | Conflict mediation | Case management, Refund arbitration, Penalty application | 
+| **Accounts** | Financial oversight | Deposit verification, Withdrawal processing, Tax reporting |
+
+---
+
+## **3. High-Level Architecture**
+
+### **A. Component Diagram**
+```mermaid
+graph TD
+  A[Frontend (Next.js PWA)] --> B[Express API Gateway]
+  B --> C[Supabase Auth]
+  B --> D[Supabase Realtime]
+  B --> E[PostgreSQL Database]
+  B --> F[External Services]
+  A --> G[Refine Admin Panel]
+  
+  subgraph External
+    F -->|Webhooks| H[Payment Processors]
+    F --> I[Email Service]
+    F --> J[Analytics]
+  end
+```
+
+### **B. Data Flow**
+1. **Client requests** hit Express first
+2. Express routes to:
+   - Supabase for auth/realtime
+   - Local services for business logic
+3. **Admin requests** go directly to Supabase via Refine
+4. **Financial operations** require dual confirmation (Accounts + Express)
+
+---
+
+## **4. Critical API Endpoints**
+
+### **A. Authentication & User Management**
+| Endpoint | Method | Roles | Description |
+|----------|--------|-------|-------------|
+| `/auth/login` | POST | All | Hybrid auth (Supabase/local) |
+| `/auth/register` | POST | All | Role-based registration |
+| `/users/{id}/roles` | PUT | Admin | Role assignment |
+| `/users/{id}/permissions` | PATCH | Admin | Permission updates |
+
+### **B. Job Marketplace**
+| Endpoint | Method | Roles | Description |
+|----------|--------|-------|-------------|
+| `/jobs` | GET | All | Public job listings |
+| `/jobs` | POST | Client | Create new job |
+| `/jobs/{id}/approval` | PATCH | QA | Approve/reject job post |
+| `/jobs/{id}/bids` | GET | All | View bids |
+
+### **C. Bidding & Contracts**
+| Endpoint | Method | Roles | Description |
+|----------|--------|-------|-------------|
+| `/bids` | POST | Freelancer | Submit proposal |
+| `/contracts` | POST | Client | Create from accepted bid |
+| `/contracts/{id}/dispute` | POST | Any | Raise dispute |
+| `/contracts/{id}/resolve` | POST | Dispute | Close dispute |
+
+### **D. Financial Operations**
+| Endpoint | Method | Roles | Description |
+|----------|--------|-------|-------------|
+| `/wallet/deposit` | POST | Client | Fund wallet |
+| `/wallet/withdraw` | POST | Freelancer | Request payout |
+| `/transactions` | GET | Accounts | Financial reporting |
+| `/escrow/{id}/release` | POST | Client | Approve payment |
+
+### **E. Admin & Moderation**
+| Endpoint | Method | Roles | Description |
+|----------|--------|-------|-------------|
+| `/admin/metrics` | GET | Admin | Platform analytics |
+| `/admin/flagged` | GET | QA | Content review queue |
+| `/support/tickets` | GET | Support | User assistance cases |
+| `/system/config` | PATCH | Admin | Platform settings |
+
+---
+
+## **5. Permission Matrix**
+| Feature | Admin | Client | Freelancer | QA | Support | Dispute | Accounts |
+|---------|-------|--------|-----------|----|--------|--------|---------|
+| Create jobs | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Approve jobs | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ |
+| Process payments | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| Ban users | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ |
+| View all contracts | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ |
+| Access financials | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ |
+
+---
+
+## **6. Key Architectural Decisions**
+
+### **A. Hybrid Auth Flow**
+- **Express-first approach** allows swapping Supabase without client changes
+- **JWT standardization** across providers ensures compatibility
+- **Fallback local auth** for emergency access
+
+### **B. Realtime Event Handling**
+- **Supabase Realtime** for:
+  - Chat messages
+  - Bid notifications
+  - Contract updates
+- **Express webhooks** for:
+  - Payment confirmations
+  - Admin alerts
+
+### **C. Financial Security**
+1. **Dual-control system**:
+   - Clients initiate payments
+   - Accounts team verifies/processes
+2. **Escrow state machine**:
+   ```mermaid
+   stateDiagram
+     [*] --> Pending: Client deposits
+     Pending --> Held: QA approves
+     Held --> Released: Work accepted
+     Held --> Disputed: Conflict raised
+     Disputed --> Refunded: Client favor
+     Disputed --> Paid: Freelancer favor
+   ```
+
+### **D. PWA Optimization**
+- **Offline-first caching**:
+  - Job listings (24h cache)
+  - User profiles (72h cache)
+- **Background sync** for:
+  - Bid submissions
+  - Message drafts
+
+---
+
+## **7. Scalability Considerations**
+
+### **A. Database Partitioning Strategy**
+| Table | Partition Key | Access Pattern |
+|-------|--------------|----------------|
+| `messages` | `(sender_id, receiver_id)` | User conversation history |
+| `transactions` | `created_at` | Financial reporting |
+| `jobs` | `client_id` | Client dashboard |
+
+### **B. Performance Targets**
+- **Auth latency**: <500ms (p95)
+- **Job search**: <1s (10k concurrent listings)
+- **Escrow processing**: <2s (including blockchain confirmation)
+
+### **C. Failure Modes**
+1. **Supabase outage**:
+   - Express falls back to local auth
+   - Realtime features degrade gracefully
+2. **Payment processor failure**:
+   - Queue withdrawals for manual processing
+   - Notify Accounts team
+
+---
+
+## **8. Compliance & Security**
+
+### **A. Data Protection**
+- **EU GDPR**: Right to erasure implemented
+- **PCI DSS**: Wallet balances only (no raw payment data)
+- **SOC 2**: Audit logging for all financial actions
+
+### **B. Audit Trails**
+- **Admin actions**: Full change history
+- **Financial ops**: Triple-entry accounting
+- **Dispute resolution**: Immutable case records
+
+---
+
+## **9. Deployment Topology**
+```
+Global Users
+├─ Vercel Edge (Frontend)
+│  ├─ Static assets (CDN)
+│  └─ SSR pages (Regional)
+│
+├─ Express (API)
+│  ├─ Primary: AWS us-east-1
+│  └─ Failover: DigitalOcean LON
+│
+└─ Supabase
+   ├─ Auth: Global Anycast
+   └─ Database: Regional replicas
+```
+
+---
+
+## **10. Roadmap & Extensions**
+
+### **Near-term**
+- **Multi-currency support**
+- **AI-powered dispute resolution**
+- **Skills certification system**
+
+### **Long-term**
+- **Decentralized identity** (DID integration)
+- **Smart contract escrow**
+- **Cross-platform messaging**
+
+This architecture provides the flexibility to:
+1. Start with Supabase's free tier
+2. Gradually migrate components to Express as needed
+3. Maintain strict role separation
+4. Scale to 50K+ users without major redesigns
